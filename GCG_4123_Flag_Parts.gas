@@ -1,0 +1,316 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+'Date: 06/16/2016
+'Coded by: WAW
+'This custom project will make a checkbox available in the Inventory screen to flag any part that should not be sold individually. In the Supply and Demand
+'screen, the background of the Part textbox will be coloured red if part should not be sold individually upon populating part information on screen. In the
+'Sales Order (Lines) screen, a message box will alert the user that the part is not available for individual sale upon populating part information on screen.
+
+'open connection
+F.odbc.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+'check to see if the inventory main populate hook fires
+F.Intrinsic.Control.If(V.caller.Hook,=,"10120")
+	F.Intrinsic.Control.CallSub(Invpop)
+'otherwise see if the inventory main load part hook fires
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"10125")
+	F.Intrinsic.Control.CallSub(Invpartpop)
+'added post save hook to uncheck the checkbox if they decide to clear the information on screen FQ
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"10185")
+	F.Intrinsic.Control.CallSub(Invpartpop)
+'otherwise see if the inventory main save hook fires
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"10170")
+	F.Intrinsic.Control.CallSub(Invsave)
+'otherwise see if the supply and demand load part part hook fires
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"14050")
+	F.Intrinsic.Control.CallSub(Supdmdpop)
+'otherwise see if the sales order lines load parthook fires
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,"12045")
+	F.Intrinsic.Control.CallSub(Salesorderpartpop)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+'	f.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'close connection to the database
+F.ODBC.Connection!conx.Close
+
+'end the program
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Unload.End
+
+Program.Sub.InvPop.Start
+F.Intrinsic.Control.SetErrorHandler("InvPop_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'set the label
+'changed label from "Can be sold individually" as requested by customer.
+V.Passed.GAB-LBL-1.Set("Cannot be sold individually")
+F.Intrinsic.Variable.SetProperty("GAB-LBL-1","PL",270)
+F.Intrinsic.Variable.SetProperty("GAB-LBL-1","PT",111)
+F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-LBL-1,"HIDE",0)
+F.Intrinsic.Variable.SetProperty("GAB-LBL-1","PW",125)
+
+'set the checkbox
+F.Intrinsic.Variable.SetProperty("GAB-CHK-1","PL",250)
+F.Intrinsic.Variable.SetProperty("GAB-CHK-1","PT",111)
+F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-CHK-1,"HIDE",0)
+F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-CHK-1,"LOCK",0)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("InvPop_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.InvPop.End
+
+Program.Sub.InvPartPop.Start
+F.Intrinsic.Control.SetErrorHandler("InvPartPop_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.spart.Declare(String)
+V.local.srev.Declare(String)
+V.local.sloc.Declare(String)
+V.Local.ssql.Declare(String)
+V.Local.scheckbox.Declare(String)
+
+'set the local variables as the passed variables
+V.Local.spart.Set(V.Passed.000007)
+V.Local.srev.Set(V.Passed.000008)
+F.Intrinsic.String.GSSPartString(V.Local.spart,V.Local.srev,V.Local.spart)
+V.Local.sloc.Set(V.Passed.000009)
+
+'clear the checkbox
+V.Passed.GAB-CHK-1.Set("N")
+
+'set the checkbox
+V.Local.scheckbox.Set(V.Passed.GAB-CHK-1)
+
+'query the custom table
+F.Intrinsic.String.Build("select SALES_FLAG from GCG_4123_Flag_Parts where PART = '{0}' and LOC = '{1}'",V.Local.spart.Trim,V.Local.sloc.Trim,V.Local.ssql)
+F.ODBC.Connection!conx.OpenRecordsetRO("rst",V.Local.ssql)
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'if the sales flag is flagged, check the checkbox
+	F.Intrinsic.Control.If(V.ODBC.conx!rst.FieldValTrim!SALES_FLAG,=,"Y")
+		V.Passed.GAB-CHK-1.Set("Y")
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+'close connection
+F.ODBC.conx!rst.close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("InvPartPop_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.InvPartPop.End
+
+Program.Sub.InvSave.Start
+F.Intrinsic.Control.SetErrorHandler("InvSave_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sflag.declare(String)
+V.Local.spart.Declare(String)
+V.Local.sloc.Declare(String)
+V.Local.srev.Declare(String)
+V.Local.ssql.Declare(String)
+
+'check to see if the checkbox is checked
+F.Intrinsic.Control.If(V.Passed.GAB-CHK-1,=,"Y")
+	V.Local.sflag.Set("Y")
+F.Intrinsic.Control.Else
+	V.Local.sflag.Set("N")
+F.Intrinsic.Control.EndIf
+
+'set the local variables as the passed variables
+V.Local.spart.Set(V.Passed.000007)
+V.Local.srev.Set(V.Passed.000008)
+F.Intrinsic.String.GSSPartString(V.Local.spart,V.Local.srev,V.Local.spart)
+V.Local.sloc.Set(V.Passed.000009)
+
+'update the custom table
+F.Intrinsic.String.Build("Select * from GCG_4123_Flag_Parts where PART = '{0}' and LOC = '{1}'",V.local.spart.Trim,V.local.sloc.Trim,V.local.ssql)
+F.ODBC.Connection!conx.openrecordsetrw("rst",V.Local.ssql)
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,True)
+	F.ODBC.conx!rst.AddNew
+	F.ODBC.conx!rst.Set!PART(V.Local.spart.Trim)
+	F.ODBC.conx!rst.Set!LOC(V.Local.sloc.Trim)
+	F.ODBC.conx!rst.Set!SALES_FLAG(V.Local.sflag.Trim)
+	F.ODBC.conx!rst.Update
+F.Intrinsic.Control.Else
+	F.ODBC.conx!rst.Set!SALES_FLAG(V.Local.sflag.Trim)
+	F.ODBC.conx!rst.Update
+F.Intrinsic.Control.EndIf
+
+'clear the checkbox
+V.Passed.GAB-CHK-1.Set("N")
+
+'close the connection
+F.ODBC.conx!rst.Close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("InvSave_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.InvSave.End
+
+Program.Sub.SupDmdPop.Start
+F.Intrinsic.Control.SetErrorHandler("SupDmdPop_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.spart.Declare(String)
+V.Local.sloc.Declare(String)
+V.Local.srev.Declare(String)
+V.Local.ssql.Declare(String)
+
+'set the local variables as the passed variables
+V.Local.spart.Set(V.Passed.000003)
+V.Local.srev.Set(V.Passed.000099)
+F.Intrinsic.String.GSSPartString(V.Local.spart,V.Local.srev,V.Local.spart)
+V.Local.sloc.Set(V.Passed.000004)
+
+'added a reset to original colors when they move into a new part FQ
+F.Intrinsic.variable.setProperty(000003,"BC",V.Color.White)
+F.Intrinsic.variable.setProperty(000099,"BC",V.Color.White)
+F.Intrinsic.variable.setProperty(000004,"BC",V.Color.White)
+
+F.Intrinsic.variable.setProperty(000003,"FC",V.Color.Black)
+F.Intrinsic.variable.setProperty(000099,"FC",V.Color.Black)
+F.Intrinsic.variable.setProperty(000004,"FC",V.Color.Black)
+
+
+'query the custom table
+F.Intrinsic.String.Build("select SALES_FLAG from GCG_4123_Flag_Parts where PART = '{0}' and LOC = '{1}'",V.Local.spart.Trim,V.Local.sloc.Trim,V.Local.ssql)
+F.ODBC.Connection!conx.OpenRecordsetRO("rst",V.Local.ssql)
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'if the sales flag is not flagged, color the background of the part
+	F.Intrinsic.Control.If(V.ODBC.conx!rst.FieldValTrim!SALES_FLAG,=,"Y")
+		'color the part textboxes
+		F.Intrinsic.variable.setProperty(000003,"BC",V.Color.Red)
+		F.Intrinsic.variable.setProperty(000099,"BC",V.Color.Red)
+		F.Intrinsic.variable.setProperty(000004,"BC",V.Color.Red)
+
+		F.Intrinsic.variable.setProperty(000003,"FC",V.Color.White)
+		F.Intrinsic.variable.setProperty(000099,"FC",V.Color.White)
+		F.Intrinsic.variable.setProperty(000004,"FC",V.Color.White)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+'close connection
+F.ODBC.conx!rst.close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SupDmdPop_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.SupDmdPop.End
+
+Program.Sub.SalesOrderPartPop.Start
+F.Intrinsic.Control.SetErrorHandler("SalesOrderPartPop_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.spart.Declare(String)
+V.Local.sloc.Declare(String)
+V.Local.srev.Declare(String)
+V.Local.ssql.Declare(String)
+
+'set the local variables as the passed variables
+V.Local.spart.Set(V.Passed.000052)
+V.Local.srev.Set(V.Passed.000053)
+F.Intrinsic.String.GSSPartString(V.Local.spart,V.Local.srev,V.Local.spart)
+V.Local.sloc.Set(V.Passed.000054)
+
+'query the custom table
+F.Intrinsic.String.Build("select SALES_FLAG from GCG_4123_Flag_Parts where PART = '{0}' and LOC = '{1}'",V.Local.spart.Trim,V.Local.sloc.Trim,V.Local.ssql)
+F.ODBC.Connection!conx.OpenRecordsetRO("rst",V.Local.ssql)
+F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+	'if the sales flag is not flagged, inform the user
+	F.Intrinsic.Control.If(V.ODBC.conx!rst.FieldValTrim!SALES_FLAG,=,"Y")
+		'display a message  box informing the user that it has been flagged
+		F.Intrinsic.UI.Msgbox("The selected part cannot be sold individually")
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+'close connection
+F.ODBC.conx!rst.close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SalesOrderPartPop_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4123_Flag_Parts.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.SalesOrderPartPop.End
+
+Program.Sub.Comments.Start
+${$0$}$GCG_4123_Flag_Parts$}$WAW$}$6/17/2016
+Program.Sub.Comments.End
+
